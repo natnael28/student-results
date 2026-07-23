@@ -1,10 +1,23 @@
-// ===== Storage =====
-const Storage = {
-  _available: true,
+// ===== Storage (localStorage + export/import) =====
+const GRADE_DEFAULTS = [
+  { min: 90, max: 100, letter: 'A+', gpa: 4.0 },
+  { min: 85, max: 89, letter: 'A', gpa: 4.0 },
+  { min: 80, max: 84, letter: 'A-', gpa: 3.75 },
+  { min: 75, max: 79, letter: 'B+', gpa: 3.5 },
+  { min: 70, max: 74, letter: 'B', gpa: 3.0 },
+  { min: 65, max: 69, letter: 'B-', gpa: 2.75 },
+  { min: 60, max: 64, letter: 'C+', gpa: 2.5 },
+  { min: 50, max: 59, letter: 'C', gpa: 2.0 },
+  { min: 45, max: 49, letter: 'D', gpa: 1.0 },
+  { min: 0, max: 44, letter: 'F', gpa: 0 }
+];
 
-  _check() {
-    try { localStorage.setItem('__test__', '1'); localStorage.removeItem('__test__'); return true; }
-    catch { return false; }
+const Storage = {
+  _ready: false,
+
+  init() {
+    this._ensureDefaults();
+    this._ready = true;
   },
 
   _get(key) {
@@ -12,14 +25,37 @@ const Storage = {
     catch { return []; }
   },
   _set(key, data) {
-    if (!this._available) throw new Error('localStorage is not available.');
     try { localStorage.setItem(key, JSON.stringify(data)); }
-    catch (e) { this._available = false; throw e; }
+    catch (e) { throw new Error('Storage failed: ' + e.message); }
   },
+
+  _ensureDefaults() {
+    if (!localStorage.getItem('sr_grade_scale'))
+      localStorage.setItem('sr_grade_scale', JSON.stringify(GRADE_DEFAULTS));
+    if (!localStorage.getItem('sr_subjects'))
+      localStorage.setItem('sr_subjects', JSON.stringify(['Mathematics', 'English', 'Science']));
+    const users = this._get('sr_users');
+    if (!users.find(u => u.email === 'admin@srms.com')) {
+      users.push({ id: Date.now().toString(36), name: 'Instructor', email: 'admin@srms.com', password: 'admin123', role: 'instructor', profile: { phone: '', address: '' } });
+      this._set('sr_users', users);
+    }
+  },
+
+  // ---- Individual keys ----
   getUsers() { return this._get('sr_users'); },
   setUsers(u) { this._set('sr_users', u); },
   getResults() { return this._get('sr_results'); },
   setResults(r) { this._set('sr_results', r); },
+  getSubjects() { return this._get('sr_subjects'); },
+  setSubjects(s) { this._set('sr_subjects', s); },
+  getGradeScale() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('sr_grade_scale'));
+      if (saved && saved.length) return saved;
+    } catch {}
+    return GRADE_DEFAULTS;
+  },
+  setGradeScale(s) { localStorage.setItem('sr_grade_scale', JSON.stringify(s)); },
   getCurrentUser() {
     try { return JSON.parse(sessionStorage.getItem('sr_current')); }
     catch { return null; }
@@ -28,44 +64,24 @@ const Storage = {
     if (u) sessionStorage.setItem('sr_current', JSON.stringify(u));
     else sessionStorage.removeItem('sr_current');
   },
-  getGradeScale() {
-    const def = [
-      { min: 90, max: 100, letter: 'A+', gpa: 4.0 },
-      { min: 85, max: 89, letter: 'A', gpa: 4.0 },
-      { min: 80, max: 84, letter: 'A-', gpa: 3.75 },
-      { min: 75, max: 79, letter: 'B+', gpa: 3.5 },
-      { min: 70, max: 74, letter: 'B', gpa: 3.0 },
-      { min: 65, max: 69, letter: 'B-', gpa: 2.75 },
-      { min: 60, max: 64, letter: 'C+', gpa: 2.5 },
-      { min: 50, max: 59, letter: 'C', gpa: 2.0 },
-      { min: 45, max: 49, letter: 'D', gpa: 1.0 },
-      { min: 0, max: 44, letter: 'F', gpa: 0 }
-    ];
-    try {
-      const saved = JSON.parse(localStorage.getItem('sr_grade_scale'));
-      if (saved && saved.length) return saved;
-    } catch {}
-    return def;
+
+  // ---- Export / Import (sync between devices) ----
+  exportAll() {
+    return {
+      users: this.getUsers(),
+      results: this.getResults(),
+      subjects: this.getSubjects(),
+      gradeScale: this.getGradeScale(),
+      exportedAt: new Date().toISOString()
+    };
   },
-  setGradeScale(s) { localStorage.setItem('sr_grade_scale', JSON.stringify(s)); },
-  getSubjects() { return this._get('sr_subjects'); },
-  setSubjects(s) { this._set('sr_subjects', s); },
-  seedInstructor() {
-    const users = this.getUsers();
-    if (!users.find(u => u.email === 'admin@srms.com')) {
-      users.push({
-        id: Date.now().toString(36),
-        name: 'Instructor',
-        email: 'admin@srms.com',
-        password: 'admin123',
-        role: 'instructor',
-        profile: { phone: '', address: '' }
-      });
-      this.setUsers(users);
-    }
-    if (this.getSubjects().length === 0) {
-      this.setSubjects(['Mathematics', 'English', 'Science']);
-    }
+
+  importAll(data) {
+    if (!data || !data.users) throw new Error('Invalid data file.');
+    this.setUsers(data.users);
+    this.setResults(data.results || []);
+    if (data.subjects) this.setSubjects(data.subjects);
+    if (data.gradeScale) this.setGradeScale(data.gradeScale);
   }
 };
 
@@ -74,8 +90,6 @@ const Auth = {
   currentUser: null,
 
   init() {
-    Storage._available = Storage._check();
-    Storage.seedInstructor();
     this.currentUser = Storage.getCurrentUser();
   },
 
@@ -257,7 +271,7 @@ function calculateGrade(total) {
 
 // ===== UI =====
 document.addEventListener('DOMContentLoaded', function () {
-  Storage.seedInstructor();
+  Storage.init();
   Auth.init();
   render();
 });
@@ -321,9 +335,6 @@ function handleLogin() {
   if (!identifier || !password) {
     msgEl.className = 'msg error'; msgEl.textContent = 'Please fill all fields.'; return;
   }
-  if (!Storage._available) {
-    msgEl.className = 'msg error'; msgEl.textContent = 'Storage unavailable. Enable cookies/localStorage in your browser settings.'; return;
-  }
   const result = Auth.login(identifier, password);
   if (result.ok) {
     render();
@@ -347,9 +358,6 @@ function handleRegister() {
   }
   if (password.length < 4) {
     msgEl.className = 'msg error'; msgEl.textContent = 'Password must be at least 4 characters.'; return;
-  }
-  if (!Storage._available) {
-    msgEl.className = 'msg error'; msgEl.textContent = 'Storage unavailable. Enable cookies/localStorage.'; return;
   }
   try {
     const result = Auth.register(firstName, fatherName, studentId, password);
@@ -490,9 +498,6 @@ function handleInstructorRegisterStudent() {
   if (!firstName || !fatherName || !studentId || !password) {
     msgEl.className = 'msg error'; msgEl.textContent = 'Please fill all fields.'; return;
   }
-  if (!Storage._available) {
-    msgEl.className = 'msg error'; msgEl.textContent = 'Storage unavailable. Enable cookies/localStorage in your browser.'; return;
-  }
   try {
     const result = Auth.register(firstName, fatherName, studentId, password);
     msgEl.className = result.ok ? 'msg success' : 'msg error';
@@ -512,9 +517,6 @@ function handleInstructorRegisterStudent() {
 function handleBulkRegister(input) {
   const msgEl = document.getElementById('instRegMsg');
   if (!input.files || !input.files[0]) return;
-  if (!Storage._available) {
-    msgEl.className = 'msg error'; msgEl.textContent = 'Storage unavailable. Enable cookies/localStorage.'; return;
-  }
   const file = input.files[0];
   const reader = new FileReader();
   reader.onload = function (e) {
@@ -740,15 +742,18 @@ function renderAllStudents() {
   const list = document.getElementById('studentsList');
   const empty = document.getElementById('studentsEmpty');
   const delAllBtn = document.getElementById('deleteAllStudentsBtn');
+  const exportBtn = document.getElementById('exportBtn');
   const users = Storage.getUsers().filter(u => u.role === 'student');
   list.innerHTML = '';
   if (users.length === 0) {
     empty.classList.remove('hidden');
     if (delAllBtn) delAllBtn.style.display = 'none';
+    if (exportBtn) exportBtn.style.display = 'none';
     return;
   }
   empty.classList.add('hidden');
   if (delAllBtn) delAllBtn.style.display = 'inline-block';
+  if (exportBtn) exportBtn.style.display = 'inline-block';
   users.forEach(u => {
     const div = document.createElement('div');
     div.className = 'student-item';
@@ -784,6 +789,42 @@ function deleteAllStudents() {
   Storage.setUsers(users);
   Storage.setResults([]);
   renderInstructorDashboard();
+}
+
+// ===== Export / Import (sync between devices) =====
+function exportData() {
+  const data = Storage.exportAll();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'srms-data-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(input) {
+  const msgEl = document.getElementById('instRegMsg');
+  if (!input.files || !input.files[0]) return;
+  if (!confirm('Import will REPLACE all current data with the file contents. Continue?')) {
+    input.value = ''; return;
+  }
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      Storage.importAll(data);
+      msgEl.className = 'msg success';
+      msgEl.textContent = 'Data imported successfully! Refreshing...';
+      renderInstructorDashboard();
+      setTimeout(() => location.reload(), 1500);
+    } catch (err) {
+      msgEl.className = 'msg error';
+      msgEl.textContent = 'Invalid file: ' + err.message;
+    }
+  };
+  reader.readAsText(input.files[0]);
+  input.value = '';
 }
 
 function renderAllResultsTable() {

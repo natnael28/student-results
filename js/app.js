@@ -36,37 +36,34 @@ const Storage = {
     firebase.initializeApp(FIREBASE_CONFIG);
     this._db = firebase.firestore();
     try { await this._db.enablePersistence({ synchronizeTabs: true }); } catch {}
-    await this._loadAll();
-    this._ready = true;
+    await this._loadAndSeed();
     this._listenRemote();
+    this._ready = true;
   },
 
-  async _loadAll() {
-    const batch = [
-      this._db.collection('users').get().then(s => {
-        this._users = [];
-        s.forEach(d => this._users.push({ docId: d.id, ...d.data() }));
-      }),
-      this._db.collection('results').get().then(s => {
-        this._results = [];
-        s.forEach(d => this._results.push({ docId: d.id, ...d.data() }));
-      }),
-      this._db.collection('config').doc('subjects').get().then(d => {
-        this._subjects = d.exists ? d.data().list : ['Mathematics', 'English', 'Science'];
-      }),
-      this._db.collection('config').doc('gradeScale').get().then(d => {
-        this._gradeScale = d.exists ? d.data().scale : GRADE_DEFAULTS;
-      })
-    ];
-    await Promise.all(batch);
-    this._ensureAdmin();
-  },
-
-  _ensureAdmin() {
+  async _loadAndSeed() {
+    await this._db.collection('users').get().then(s => {
+      this._users = [];
+      s.forEach(d => this._users.push({ docId: d.id, ...d.data() }));
+    });
+    await this._db.collection('results').get().then(s => {
+      this._results = [];
+      s.forEach(d => this._results.push({ docId: d.id, ...d.data() }));
+    });
+    await this._db.collection('config').doc('subjects').get().then(d => {
+      this._subjects = d.exists ? d.data().list : ['Mathematics', 'English', 'Science'];
+    });
+    await this._db.collection('config').doc('gradeScale').get().then(d => {
+      this._gradeScale = d.exists ? d.data().scale : GRADE_DEFAULTS;
+    });
     if (!this._users.find(u => u.email === 'admin@srms.com')) {
       const admin = { id: Date.now().toString(36), name: 'Instructor', email: 'admin@srms.com', password: 'admin123', role: 'instructor', profile: { phone: '', address: '' } };
-      this._users.push(admin);
-      this._syncToFirestore();
+      const ref = await this._db.collection('users').add(admin);
+      this._users.push({ docId: ref.id, ...admin });
+    }
+    if (!this._subjects || this._subjects.length === 0) {
+      this._subjects = ['Mathematics', 'English', 'Science'];
+      await this._db.collection('config').doc('subjects').set({ list: this._subjects });
     }
   },
 

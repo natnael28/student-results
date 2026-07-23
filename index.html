@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Results Management System</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="logo">SRMS</div>
+    <div class="nav-links">
+      <span id="navUserName"></span>
+      <span id="navUserRole" style="font-size:0.8rem;opacity:0.7;"></span>
+      <button onclick="openProfileModal()">Profile</button>
+      <button onclick="openPwdModal()">Password</button>
+      <button onclick="handleLogout()">Logout</button>
+    </div>
+  </nav>
+
+  <!-- AUTH SECTION -->
+  <section id="authSection" class="auth-wrapper">
+    <div class="auth-card">
+      <h1>Student Results</h1>
+      <div id="authMsg" class="msg"></div>
+
+      <div class="auth-tabs">
+        <button id="tabLogin" class="active" onclick="showLogin()">Login</button>
+        <button id="tabRegister" onclick="showRegister()">Register</button>
+      </div>
+
+      <!-- Login -->
+      <div id="loginForm">
+        <div class="form-group">
+          <label>Student ID / Email</label>
+          <input type="text" id="loginId" placeholder="Enter your Student ID or email">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="loginPassword" placeholder="Enter your password">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="handleLogin()">Login</button>
+        <p style="text-align:center;margin-top:0.8rem;font-size:0.8rem;">
+          <a href="#" onclick="showReset()" style="color:#1a73e8;text-decoration:none;">Forgot password?</a>
+        </p>
+        <p style="text-align:center;margin-top:0.5rem;font-size:0.75rem;color:#888;">
+          Instructor: admin@srms.com / admin123
+        </p>
+      </div>
+
+      <!-- Register -->
+      <div id="registerForm" class="hidden">
+        <div class="form-group">
+          <label>First Name</label>
+          <input type="text" id="regFirstName" placeholder="Enter your first name">
+        </div>
+        <div class="form-group">
+          <label>Father Name</label>
+          <input type="text" id="regFatherName" placeholder="Enter your father name">
+        </div>
+        <div class="form-group">
+          <label>Student ID</label>
+          <input type="text" id="regStudentId" placeholder="Enter your student ID">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="regPassword" placeholder="Create a password">
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="regConfirm" placeholder="Confirm your password">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="handleRegister()">Register</button>
+        <p style="text-align:center;margin-top:0.8rem;font-size:0.8rem;">
+          Already have an account? <a href="#" onclick="showLogin()" style="color:#1a73e8;text-decoration:none;">Login</a>
+        </p>
+      </div>
+
+      <!-- Reset Password -->
+      <div id="resetForm" class="hidden">
+        <p style="font-size:0.85rem;color:#666;margin-bottom:1rem;">Enter your Student ID to reset your password. It will be reset to <strong>reset123</strong>.</p>
+        <div class="form-group">
+          <label>Student ID</label>
+          <input type="text" id="resetId" placeholder="Enter your student ID">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="handleReset()">Reset Password</button>
+        <p style="text-align:center;margin-top:0.8rem;font-size:0.8rem;">
+          <a href="#" onclick="showLogin()" style="color:#1a73e8;text-decoration:none;">Back to Login</a>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- APP SECTION -->
+  <section id="appSection" class="container hidden">
+
+    <!-- STUDENT DASHBOARD -->
+    <div id="studentDashboard">
+      <div class="dashboard-grid">
+        <!-- Profile -->
+        <div>
+          <div class="card">
+            <h2>My Profile</h2>
+            <div class="profile-info">
+              <p><strong>Name:</strong> <span id="studentName"></span></p>
+              <p><strong>Student ID:</strong> <span id="studentIdDisplay"></span></p>
+              <p><strong>Phone:</strong> <span id="studentPhone"></span></p>
+              <p><strong>Address:</strong> <span id="studentAddress"></span></p>
+            </div>
+            <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" onclick="openProfileModal()">Edit Profile</button>
+              <button class="btn btn-sm" style="background:#e8edf2;color:#555;" onclick="openPwdModal()">Change Password</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div>
+          <div class="card">
+            <h2>My Results</h2>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Subject</th>
+                    <th>Mid Exam</th>
+                    <th>Quiz</th>
+                    <th>Project</th>
+                    <th>Assignment</th>
+                    <th>Final Exam</th>
+                    <th>Total</th>
+                    <th>Grade</th>
+                  </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+              </table>
+            </div>
+            <div id="resultsEmpty" class="empty-state">
+              <div class="icon">📊</div>
+              <p>No results available yet. Check back after your instructor uploads them.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INSTRUCTOR DASHBOARD -->
+    <div id="instructorDashboard">
+
+      <!-- Register Student -->
+      <div class="card">
+        <h2>Register Student</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.8rem;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>First Name</label>
+            <input type="text" id="instRegFirstName" placeholder="First name">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Father Name</label>
+            <input type="text" id="instRegFatherName" placeholder="Father name">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Student ID</label>
+            <input type="text" id="instRegStudentId" placeholder="Student ID">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Password</label>
+            <input type="password" id="instRegPassword" placeholder="Temporary password">
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:0.5rem;">
+            <button class="btn btn-primary" onclick="handleInstructorRegisterStudent()" style="flex:1;">Register</button>
+            <button class="btn btn-sm" style="background:#e8edf2;color:#555;white-space:nowrap;" onclick="document.getElementById('bulkRegInput').click()">Bulk via Excel</button>
+            <button class="btn btn-sm" style="background:#e8edf2;color:#555;white-space:nowrap;" onclick="downloadSampleStudentExcel()">Sample Excel</button>
+          </div>
+        </div>
+        <div id="instRegMsg" class="msg" style="margin-top:0.8rem;"></div>
+        <input type="file" id="bulkRegInput" accept=".xlsx,.xls" onchange="handleBulkRegister(this)" style="display:none;">
+      </div>
+
+      <!-- Subjects -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h2 style="border:none;padding:0;margin:0;">Subjects</h2>
+        </div>
+        <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+          <input type="text" id="newSubjectInput" placeholder="e.g. Mathematics" style="flex:1;padding:0.5rem 0.8rem;border:1px solid #d0d5dd;border-radius:5px;font-size:0.9rem;">
+          <button class="btn btn-primary" onclick="addSubject()">Add</button>
+        </div>
+        <div id="subjectsList" style="margin-top:0.6rem;display:flex;flex-wrap:wrap;gap:0.4rem;"></div>
+      </div>
+
+      <!-- Manual Entry -->
+      <div class="card">
+        <h2>Manual Entry</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Student</label>
+            <select id="manualStudent"><option value="">-- Select Student --</option></select>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Subject</label>
+            <select id="manualSubject"><option value="">-- Select Subject --</option></select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.6rem;margin-top:0.6rem;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Mid Exam</label>
+            <input type="number" id="manualMid" placeholder="0" min="0">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Quiz</label>
+            <input type="number" id="manualQuiz" placeholder="0" min="0">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Project</label>
+            <input type="number" id="manualProject" placeholder="0" min="0">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Assignment</label>
+            <input type="number" id="manualAssignment" placeholder="0" min="0">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Final Exam</label>
+            <input type="number" id="manualFinal" placeholder="0" min="0">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.8rem;margin-top:0.8rem;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="calculateManualEntry()">Calculate</button>
+          <button class="btn btn-success" onclick="saveManualEntry()">Save</button>
+          <span id="manualCalcResult" style="font-weight:600;font-size:1rem;"></span>
+        </div>
+        <div id="manualMsg" class="msg" style="margin-top:0.6rem;"></div>
+      </div>
+
+      <!-- Upload Results -->
+      <div class="card">
+        <h2>Upload Results</h2>
+        <div class="form-group">
+          <label>Subject</label>
+          <select id="uploadSubject"><option value="">-- Select Subject --</option></select>
+        </div>
+        <div id="uploadArea" class="upload-area">
+          <div class="icon">📤</div>
+          <p>Drop your Excel file here or click to browse</p>
+          <p style="font-size:0.75rem;color:#aaa;margin-top:0.3rem;">
+            Include any of these columns: <strong>Student ID</strong>, <strong>Mid Exam</strong>, <strong>Quiz</strong>, <strong>Project</strong>, <strong>Assignment</strong>, <strong>Final Exam</strong>, <strong>Total</strong>
+          </p>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFileSelect(this)" style="display:none;">
+        <div id="fileInfo" class="file-info hidden"></div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <button class="btn btn-success" onclick="handleUpload()">Upload Results</button>
+          <button class="btn btn-sm" style="background:#e8edf2;color:#555;" onclick="downloadSampleExcel()">Download Sample Excel</button>
+        </div>
+        <div id="uploadMsg" class="msg" style="margin-top:0.8rem;"></div>
+      </div>
+
+      <!-- All Students -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h2 style="border:none;padding:0;margin:0;">Students (<span id="studentCount">0</span>)</h2>
+          <button class="btn btn-sm btn-danger" onclick="deleteAllStudents()" style="display:none;" id="deleteAllStudentsBtn">Delete All</button>
+        </div>
+        <div id="studentsList"></div>
+        <div id="studentsEmpty" class="empty-state">
+          <p>No students registered yet. Use the form above to register students.</p>
+        </div>
+      </div>
+
+      <!-- Grading Scale -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h2 style="border:none;padding:0;margin:0;">Grading Scale</h2>
+          <button class="btn btn-sm" style="background:#e8edf2;color:#555;" onclick="openGradeScaleModal()">Configure</button>
+        </div>
+        <div id="gradeScaleDisplay" style="font-size:0.85rem;margin-top:0.5rem;"></div>
+      </div>
+
+      <!-- All Results -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h2 style="border:none;padding:0;margin:0;">All Results</h2>
+          <select id="resultsFilter" onchange="renderAllResultsTable()" style="padding:0.35rem 0.6rem;border:1px solid #d0d5dd;border-radius:4px;font-size:0.85rem;">
+            <option value="">All Subjects</option>
+          </select>
+        </div>
+        <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Student Name</th>
+                    <th>Student ID</th>
+                    <th>Subject</th>
+                    <th>Mid Exam</th>
+                    <th>Quiz</th>
+                    <th>Project</th>
+                    <th>Assignment</th>
+                    <th>Final Exam</th>
+                    <th>Total</th>
+                    <th>Grade</th>
+                  </tr>
+                </thead>
+                <tbody id="allResultsBody"></tbody>
+              </table>
+        </div>
+        <div id="allResultsEmpty" class="empty-state">
+          <div class="icon">📊</div>
+          <p>No results uploaded yet. Upload an Excel file above.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Edit Profile Modal -->
+  <div id="profileModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Edit Profile</h2>
+      <div class="form-group">
+        <label>First Name</label>
+        <input type="text" id="editFirstName">
+      </div>
+      <div class="form-group">
+        <label>Father Name</label>
+        <input type="text" id="editFatherName">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="text" id="editPhone" placeholder="Phone number">
+      </div>
+      <div class="form-group">
+        <label>Address</label>
+        <input type="text" id="editAddress" placeholder="Your address">
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="saveProfile()">Save</button>
+        <button class="btn" style="background:#e8edf2;color:#555;" onclick="closeProfileModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div id="pwdModal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Change Password</h2>
+      <div id="pwdMsg" class="msg"></div>
+      <div class="form-group">
+        <label>Current Password</label>
+        <input type="password" id="oldPwd">
+      </div>
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="newPwd">
+      </div>
+      <div class="form-group">
+        <label>Confirm New Password</label>
+        <input type="password" id="confirmPwd">
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="changePassword()">Change Password</button>
+        <button class="btn" style="background:#e8edf2;color:#555;" onclick="closePwdModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grading Scale Modal -->
+  <div id="gradeScaleModal" class="modal-overlay hidden">
+    <div class="modal" style="max-width:560px;">
+      <h2>Configure Grading Scale</h2>
+      <p style="font-size:0.8rem;color:#888;margin-bottom:1rem;">Set the minimum score needed for each letter grade.</p>
+      <div id="gradeScaleForm"></div>
+      <div id="gradeScaleMsg" class="msg"></div>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="saveGradeScale()">Save Scale</button>
+        <button class="btn" style="background:#e8edf2;color:#555;" onclick="closeGradeScaleModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -325,8 +325,16 @@ document.addEventListener('DOMContentLoaded', function () {
     showLoading(false);
   }).catch(e => {
     showLoading(false);
-    document.getElementById('authMsg').textContent = 'Failed to load: ' + e.message;
-    document.getElementById('authMsg').className = 'msg error';
+    const msg = e.message || '';
+    const authMsg = document.getElementById('authMsg');
+    const authSection = document.getElementById('authSection');
+    if (msg.includes('offline') || msg.includes('permission') || msg.includes('Failed to get document')) {
+      authMsg.innerHTML = 'Firebase not set up. Go to <a href="https://console.firebase.google.com/project/student-bbddb/firestore" target="_blank">Firebase Console</a> &rarr; <b>Create Database</b> &rarr; <b>Start in test mode</b> &rarr; <b>Enable</b>. Then refresh this page.';
+    } else {
+      authMsg.textContent = 'Failed to load: ' + msg;
+    }
+    authMsg.className = 'msg error';
+    if (authSection) authSection.classList.remove('hidden');
   });
 });
 

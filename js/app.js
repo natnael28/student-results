@@ -1,4 +1,14 @@
-// ===== Storage (localStorage + export/import) =====
+// ===== Firebase Storage (auto-syncs across all devices) =====
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyA1JZJLbl5Pk3ghVTeD2Pl0sP_iaxePv5s',
+  authDomain: 'student-bbddb.firebaseapp.com',
+  projectId: 'student-bbddb',
+  storageBucket: 'student-bbddb.firebasestorage.app',
+  messagingSenderId: '214455603196',
+  appId: '1:214455603196:web:06965d9948f621203aac79',
+  measurementId: 'G-J8Z3CXG3FL'
+};
+
 const GRADE_DEFAULTS = [
   { min: 90, max: 100, letter: 'A+', gpa: 4.0 },
   { min: 85, max: 89, letter: 'A', gpa: 4.0 },
@@ -13,49 +23,94 @@ const GRADE_DEFAULTS = [
 ];
 
 const Storage = {
+  _db: null,
+  _users: [],
+  _results: [],
+  _subjects: [],
+  _gradeScale: GRADE_DEFAULTS,
   _ready: false,
+  _saveTimer: null,
+  _unsub: null,
 
-  init() {
-    this._ensureDefaults();
+  async init() {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    this._db = firebase.firestore();
+    try { await this._db.enablePersistence({ synchronizeTabs: true }); } catch {}
+    await this._loadAll();
     this._ready = true;
+    this._listenRemote();
   },
 
-  _get(key) {
-    try { return JSON.parse(localStorage.getItem(key)) || []; }
-    catch { return []; }
-  },
-  _set(key, data) {
-    try { localStorage.setItem(key, JSON.stringify(data)); }
-    catch (e) { throw new Error('Storage failed: ' + e.message); }
+  async _loadAll() {
+    const batch = [
+      this._db.collection('users').get().then(s => {
+        this._users = [];
+        s.forEach(d => this._users.push({ docId: d.id, ...d.data() }));
+      }),
+      this._db.collection('results').get().then(s => {
+        this._results = [];
+        s.forEach(d => this._results.push({ docId: d.id, ...d.data() }));
+      }),
+      this._db.collection('config').doc('subjects').get().then(d => {
+        this._subjects = d.exists ? d.data().list : ['Mathematics', 'English', 'Science'];
+      }),
+      this._db.collection('config').doc('gradeScale').get().then(d => {
+        this._gradeScale = d.exists ? d.data().scale : GRADE_DEFAULTS;
+      })
+    ];
+    await Promise.all(batch);
+    this._ensureAdmin();
   },
 
-  _ensureDefaults() {
-    if (!localStorage.getItem('sr_grade_scale'))
-      localStorage.setItem('sr_grade_scale', JSON.stringify(GRADE_DEFAULTS));
-    if (!localStorage.getItem('sr_subjects'))
-      localStorage.setItem('sr_subjects', JSON.stringify(['Mathematics', 'English', 'Science']));
-    const users = this._get('sr_users');
-    if (!users.find(u => u.email === 'admin@srms.com')) {
-      users.push({ id: Date.now().toString(36), name: 'Instructor', email: 'admin@srms.com', password: 'admin123', role: 'instructor', profile: { phone: '', address: '' } });
-      this._set('sr_users', users);
+  _ensureAdmin() {
+    if (!this._users.find(u => u.email === 'admin@srms.com')) {
+      const admin = { id: Date.now().toString(36), name: 'Instructor', email: 'admin@srms.com', password: 'admin123', role: 'instructor', profile: { phone: '', address: '' } };
+      this._users.push(admin);
+      this._syncToFirestore();
     }
   },
 
-  // ---- Individual keys ----
-  getUsers() { return this._get('sr_users'); },
-  setUsers(u) { this._set('sr_users', u); },
-  getResults() { return this._get('sr_results'); },
-  setResults(r) { this._set('sr_results', r); },
-  getSubjects() { return this._get('sr_subjects'); },
-  setSubjects(s) { this._set('sr_subjects', s); },
-  getGradeScale() {
-    try {
-      const saved = JSON.parse(localStorage.getItem('sr_grade_scale'));
-      if (saved && saved.length) return saved;
-    } catch {}
-    return GRADE_DEFAULTS;
+  _listenRemote() {
+    this._unsub = this._db.collection('users').onSnapshot(s => {
+      this._users = [];
+      s.forEach(d => this._users.push({ docId: d.id, ...d.data() }));
+      this._autoRefresh();
+    }, () => {});
   },
-  setGradeScale(s) { localStorage.setItem('sr_grade_scale', JSON.stringify(s)); },
+
+  _autoRefresh() {
+    if (document.querySelector('#instructorDashboard:not(.hidden)')) {
+      renderInstructorDashboard();
+    }
+  },
+
+  _syncToFirestore() {
+    clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(async () => {
+      try {
+        const batch = this._db.batch();
+        const us = await this._db.collection('users').get();
+        us.forEach(d => batch.delete(d.ref));
+        this._users.forEach(u => { const { docId, ...d } = u; batch.set(this._db.collection('users').doc(), d); });
+        const rs = await this._db.collection('results').get();
+        rs.forEach(d => batch.delete(d.ref));
+        this._results.forEach(r => { const { docId, ...d } = r; batch.set(this._db.collection('results').doc(), d); });
+        batch.set(this._db.collection('config').doc('subjects'), { list: this._subjects });
+        batch.set(this._db.collection('config').doc('gradeScale'), { scale: this._gradeScale });
+        await batch.commit();
+      } catch (e) { console.error('Firestore sync error:', e); }
+    }, 300);
+  },
+
+  // ---- Synchronous cache API ----
+  getUsers() { return this._users; },
+  setUsers(u) { this._users = u; this._syncToFirestore(); },
+  getResults() { return this._results; },
+  setResults(r) { this._results = r; this._syncToFirestore(); },
+  getSubjects() { return this._subjects; },
+  setSubjects(s) { this._subjects = s; this._syncToFirestore(); },
+  getGradeScale() { return this._gradeScale; },
+  setGradeScale(s) { this._gradeScale = s; this._syncToFirestore(); },
   getCurrentUser() {
     try { return JSON.parse(sessionStorage.getItem('sr_current')); }
     catch { return null; }
@@ -65,23 +120,15 @@ const Storage = {
     else sessionStorage.removeItem('sr_current');
   },
 
-  // ---- Export / Import (sync between devices) ----
+  // ---- Export / Import (backup) ----
   exportAll() {
-    return {
-      users: this.getUsers(),
-      results: this.getResults(),
-      subjects: this.getSubjects(),
-      gradeScale: this.getGradeScale(),
-      exportedAt: new Date().toISOString()
-    };
+    return { users: this._users, results: this._results, subjects: this._subjects, gradeScale: this._gradeScale, exportedAt: new Date().toISOString() };
   },
-
   importAll(data) {
     if (!data || !data.users) throw new Error('Invalid data file.');
-    this.setUsers(data.users);
-    this.setResults(data.results || []);
-    if (data.subjects) this.setSubjects(data.subjects);
-    if (data.gradeScale) this.setGradeScale(data.gradeScale);
+    this._users = data.users; this._results = data.results || [];
+    this._subjects = data.subjects || this._subjects; this._gradeScale = data.gradeScale || this._gradeScale;
+    this._syncToFirestore();
   }
 };
 
@@ -271,9 +318,16 @@ function calculateGrade(total) {
 
 // ===== UI =====
 document.addEventListener('DOMContentLoaded', function () {
-  Storage.init();
-  Auth.init();
-  render();
+  showLoading(true);
+  Storage.init().then(() => {
+    Auth.init();
+    render();
+    showLoading(false);
+  }).catch(e => {
+    showLoading(false);
+    document.getElementById('authMsg').textContent = 'Failed to load: ' + e.message;
+    document.getElementById('authMsg').className = 'msg error';
+  });
 });
 
 function render() {
@@ -297,6 +351,11 @@ function render() {
     document.getElementById('authSection').classList.remove('hidden');
     document.getElementById('appSection').classList.add('hidden');
   }
+}
+
+function showLoading(show) {
+  const el = document.getElementById('loadingOverlay');
+  if (el) el.classList.toggle('hidden', !show);
 }
 
 // ===== Auth UI =====

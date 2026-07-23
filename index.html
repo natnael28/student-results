@@ -262,7 +262,12 @@
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <h2 style="border:none;padding:0;margin:0;">Students (<span id="studentCount">0</span>)</h2>
-          <button class="btn btn-sm btn-danger" onclick="deleteAllStudents()" style="display:none;" id="deleteAllStudentsBtn">Delete All</button>
+          <div style="display:flex;gap:0.4rem;">
+            <button class="btn btn-sm btn-secondary" onclick="exportData()" id="exportBtn" style="display:none;">Export Data</button>
+            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('importInput').click()">Import Data</button>
+            <input type="file" id="importInput" accept=".json" style="display:none" onchange="importData(this)">
+            <button class="btn btn-sm btn-danger" onclick="deleteAllStudents()" style="display:none;" id="deleteAllStudentsBtn">Delete All</button>
+          </div>
         </div>
         <div id="studentsList"></div>
         <div id="studentsEmpty" class="empty-state">

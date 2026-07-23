@@ -1,11 +1,20 @@
 // ===== Storage =====
 const Storage = {
+  _available: true,
+
+  _check() {
+    try { localStorage.setItem('__test__', '1'); localStorage.removeItem('__test__'); return true; }
+    catch { return false; }
+  },
+
   _get(key) {
     try { return JSON.parse(localStorage.getItem(key)) || []; }
     catch { return []; }
   },
   _set(key, data) {
-    localStorage.setItem(key, JSON.stringify(data));
+    if (!this._available) throw new Error('localStorage is not available.');
+    try { localStorage.setItem(key, JSON.stringify(data)); }
+    catch (e) { this._available = false; throw e; }
   },
   getUsers() { return this._get('sr_users'); },
   setUsers(u) { this._set('sr_users', u); },
@@ -65,6 +74,7 @@ const Auth = {
   currentUser: null,
 
   init() {
+    Storage._available = Storage._check();
     Storage.seedInstructor();
     this.currentUser = Storage.getCurrentUser();
   },
@@ -311,6 +321,9 @@ function handleLogin() {
   if (!identifier || !password) {
     msgEl.className = 'msg error'; msgEl.textContent = 'Please fill all fields.'; return;
   }
+  if (!Storage._available) {
+    msgEl.className = 'msg error'; msgEl.textContent = 'Storage unavailable. Enable cookies/localStorage in your browser settings.'; return;
+  }
   const result = Auth.login(identifier, password);
   if (result.ok) {
     render();
@@ -335,13 +348,20 @@ function handleRegister() {
   if (password.length < 4) {
     msgEl.className = 'msg error'; msgEl.textContent = 'Password must be at least 4 characters.'; return;
   }
-  const result = Auth.register(firstName, fatherName, studentId, password);
-  if (result.ok) {
-    msgEl.className = 'msg success'; msgEl.textContent = result.msg;
-    showLogin();
-    document.getElementById('loginId').value = studentId;
-  } else {
-    msgEl.className = 'msg error'; msgEl.textContent = result.msg;
+  if (!Storage._available) {
+    msgEl.className = 'msg error'; msgEl.textContent = 'Storage unavailable. Enable cookies/localStorage.'; return;
+  }
+  try {
+    const result = Auth.register(firstName, fatherName, studentId, password);
+    if (result.ok) {
+      msgEl.className = 'msg success'; msgEl.textContent = result.msg;
+      showLogin();
+      document.getElementById('loginId').value = studentId;
+    } else {
+      msgEl.className = 'msg error'; msgEl.textContent = result.msg;
+    }
+  } catch (e) {
+    msgEl.className = 'msg error'; msgEl.textContent = 'Failed to save: ' + e.message;
   }
 }
 
@@ -470,21 +490,31 @@ function handleInstructorRegisterStudent() {
   if (!firstName || !fatherName || !studentId || !password) {
     msgEl.className = 'msg error'; msgEl.textContent = 'Please fill all fields.'; return;
   }
-  const result = Auth.register(firstName, fatherName, studentId, password);
-  msgEl.className = result.ok ? 'msg success' : 'msg error';
-  msgEl.textContent = result.msg;
-  if (result.ok) {
-    document.getElementById('instRegFirstName').value = '';
-    document.getElementById('instRegFatherName').value = '';
-    document.getElementById('instRegStudentId').value = '';
-    document.getElementById('instRegPassword').value = '';
-    renderInstructorDashboard();
+  if (!Storage._available) {
+    msgEl.className = 'msg error'; msgEl.textContent = 'Storage unavailable. Enable cookies/localStorage in your browser.'; return;
+  }
+  try {
+    const result = Auth.register(firstName, fatherName, studentId, password);
+    msgEl.className = result.ok ? 'msg success' : 'msg error';
+    msgEl.textContent = result.msg;
+    if (result.ok) {
+      document.getElementById('instRegFirstName').value = '';
+      document.getElementById('instRegFatherName').value = '';
+      document.getElementById('instRegStudentId').value = '';
+      document.getElementById('instRegPassword').value = '';
+      renderInstructorDashboard();
+    }
+  } catch (e) {
+    msgEl.className = 'msg error'; msgEl.textContent = 'Failed to save: ' + e.message;
   }
 }
 
 function handleBulkRegister(input) {
   const msgEl = document.getElementById('instRegMsg');
   if (!input.files || !input.files[0]) return;
+  if (!Storage._available) {
+    msgEl.className = 'msg error'; msgEl.textContent = 'Storage unavailable. Enable cookies/localStorage.'; return;
+  }
   const file = input.files[0];
   const reader = new FileReader();
   reader.onload = function (e) {
@@ -511,7 +541,7 @@ function handleBulkRegister(input) {
       msgEl.textContent = count > 0 ? `${count} students registered successfully.` : 'No valid students found. Check columns: First Name, Father Name, Student ID, Password';
       if (count > 0) renderInstructorDashboard();
     } catch (err) {
-      msgEl.className = 'msg error'; msgEl.textContent = 'Failed to parse Excel file.';
+      msgEl.className = 'msg error'; msgEl.textContent = err.message === 'localStorage is not available.' ? 'Storage unavailable on this browser.' : 'Failed to parse Excel file.';
     }
   };
   reader.readAsArrayBuffer(file);

@@ -42,28 +42,36 @@ const Storage = {
   },
 
   async _loadAndSeed() {
-    await this._db.collection('users').get().then(s => {
-      this._users = [];
-      s.forEach(d => this._users.push({ docId: d.id, ...d.data() }));
-    });
-    await this._db.collection('results').get().then(s => {
-      this._results = [];
-      s.forEach(d => this._results.push({ docId: d.id, ...d.data() }));
-    });
-    await this._db.collection('config').doc('subjects').get().then(d => {
-      this._subjects = d.exists ? d.data().list : ['Mathematics', 'English', 'Science'];
-    });
-    await this._db.collection('config').doc('gradeScale').get().then(d => {
-      this._gradeScale = d.exists ? d.data().scale : GRADE_DEFAULTS;
-    });
-    if (!this._users.find(u => u.email === 'admin@srms.com')) {
-      const admin = { id: Date.now().toString(36), name: 'Instructor', email: 'admin@srms.com', password: 'admin123', role: 'instructor', profile: { phone: '', address: '' } };
-      const ref = await this._db.collection('users').add(admin);
-      this._users.push({ docId: ref.id, ...admin });
-    }
-    if (!this._subjects || this._subjects.length === 0) {
-      this._subjects = ['Mathematics', 'English', 'Science'];
-      await this._db.collection('config').doc('subjects').set({ list: this._subjects });
+    const results = await Promise.all([
+      this._db.collection('users').get(),
+      this._db.collection('results').get(),
+      this._db.collection('config').doc('subjects').get(),
+      this._db.collection('config').doc('gradeScale').get()
+    ]);
+    this._users = []; results[0].forEach(d => this._users.push({ docId: d.id, ...d.data() }));
+    this._results = []; results[1].forEach(d => this._results.push({ docId: d.id, ...d.data() }));
+    this._subjects = results[2].exists ? results[2].data().list : [];
+    this._gradeScale = results[3].exists ? results[3].data().scale : GRADE_DEFAULTS;
+    const needsSubjects = !this._subjects || this._subjects.length === 0;
+    const needsAdmin = !this._users.find(u => u.email === 'admin@srms.com');
+    if (needsAdmin || needsSubjects) {
+      const batch = this._db.batch();
+      let adminRef = null;
+      if (needsAdmin) {
+        const admin = { id: Date.now().toString(36), name: 'Instructor', email: 'admin@srms.com', password: 'admin123', role: 'instructor', profile: { phone: '', address: '' } };
+        adminRef = this._db.collection('users').doc();
+        batch.set(adminRef, admin);
+      }
+      if (needsSubjects) {
+        this._subjects = ['Mathematics', 'English', 'Science'];
+        batch.set(this._db.collection('config').doc('subjects'), { list: this._subjects });
+      }
+      if (this._gradeScale === GRADE_DEFAULTS || this._gradeScale.length === 0) {
+        this._gradeScale = GRADE_DEFAULTS;
+        batch.set(this._db.collection('config').doc('gradeScale'), { scale: this._gradeScale });
+      }
+      await batch.commit();
+      if (needsAdmin && adminRef) this._users.push({ docId: adminRef.id, id: Date.now().toString(36), name: 'Instructor', email: 'admin@srms.com', password: 'admin123', role: 'instructor', profile: { phone: '', address: '' } });
     }
   },
 
@@ -398,6 +406,9 @@ function handleLogin() {
   const msgEl = document.getElementById('authMsg');
   if (!identifier || !password) {
     msgEl.className = 'msg error'; msgEl.textContent = 'Please fill all fields.'; return;
+  }
+  if (!Storage._ready) {
+    msgEl.className = 'msg error'; msgEl.textContent = 'Still loading data, please wait...'; return;
   }
   const result = Auth.login(identifier, password);
   if (result.ok) {
